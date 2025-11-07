@@ -31,7 +31,7 @@ $AWS_REGION = "ap-south-1"        # Your AWS region
 ### Option A: Using Bash
 ```bash
 # Navigate to project directory
-cd C:\Users\karth\Documents\Hanuman\tracking-hub
+cd C:\Users\hanuman\Documents\Hanuman\tracking-hub
 
 # Run the push script
 .\push-to-ecr.sh
