@@ -80,21 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = () => {
-    // Prevent duplicate login attempts from creating multiple redirects
-    try { sessionStorage.setItem('isLoggingIn', '1'); } catch (e) { /* ignore */ }
-
     // Generate state for CSRF protection
     const state = Math.random().toString(36).substring(7);
     localStorage.setItem('oauth_state', state);
 
     // Redirect to Cognito authorization endpoint with PKCE
     (async () => {
-      // Enforce use of VITE_OAUTH_REDIRECT_URI only
-      if (!OAUTH_CONFIG.redirectUri) {
-        console.error('VITE_OAUTH_REDIRECT_URI is not set. Aborting login to avoid using a default redirect URI.');
-        try { sessionStorage.removeItem('isLoggingIn'); } catch (e) { /* ignore */ }
-        return;
-      }
       // Prepare PKCE values
       const verifier = generateCodeVerifier();
       try { sessionStorage.setItem('pkce_verifier', verifier); } catch (e) { console.warn('Unable to store pkce_verifier', e); }
@@ -112,7 +103,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const authUrl = `${OAUTH_CONFIG.authUrl}?${params.toString()}`;
       console.log('Redirecting to authorize with PKCE');
-      // Navigate to hosted UI (will unload this page)
       window.location.href = authUrl;
     })();
   };
@@ -153,13 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const savedState = localStorage.getItem('oauth_state');
     if (state !== savedState) {
       console.error('State mismatch - possible CSRF attack');
-      // clear logging flag so user can retry
-      try { sessionStorage.removeItem('isLoggingIn'); } catch (e) { /* ignore */ }
       return false;
     }
     localStorage.removeItem('oauth_state');
 
-    let success = false;
     try {
       // Exchange authorization code for tokens
       const tokenParams = new URLSearchParams({
@@ -196,34 +183,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Token exchange failed:', errorText);
-        success = false;
-      } else {
-        const tokens: TokenResponse = await response.json();
-
-        // Store tokens
-        localStorage.setItem('access_token', tokens.access_token);
-        localStorage.setItem('id_token', tokens.id_token);
-        if (tokens.refresh_token) {
-          localStorage.setItem('refresh_token', tokens.refresh_token);
-        }
-        
-        // Calculate expiry time
-        const expiryTime = Date.now() + (tokens.expires_in * 1000);
-        localStorage.setItem('token_expiry', expiryTime.toString());
-
-        setAccessToken(tokens.access_token);
-        setIsAuthenticated(true);
-        success = true;
+        return false;
       }
+
+      const tokens: TokenResponse = await response.json();
+
+      // Store tokens
+      localStorage.setItem('access_token', tokens.access_token);
+      localStorage.setItem('id_token', tokens.id_token);
+      if (tokens.refresh_token) {
+        localStorage.setItem('refresh_token', tokens.refresh_token);
+      }
+      
+      // Calculate expiry time
+      const expiryTime = Date.now() + (tokens.expires_in * 1000);
+      localStorage.setItem('token_expiry', expiryTime.toString());
+
+      setAccessToken(tokens.access_token);
+      setIsAuthenticated(true);
+
+      return true;
     } catch (error) {
       console.error('Error during token exchange:', error);
-      success = false;
-    } finally {
-      // Clear the 'isLoggingIn' flag so future login attempts can proceed
-      try { sessionStorage.removeItem('isLoggingIn'); } catch (e) { /* ignore */ }
+      return false;
     }
-
-    return success;
   };
 
   const value = {
@@ -283,14 +266,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
           // Let Cognito handle the redirect using VITE_OAUTH_LOGOUT_REDIRECT
           return;
         }
-        // Prevent recursive login loops: if a login is already in progress, don't trigger another
-        const logging = sessionStorage.getItem('isLoggingIn');
-        if (logging) {
-          console.log('Login already in progress, skipping duplicate trigger');
-          setHasRedirected(true);
-          return;
-        }
-
         // Not authenticated - redirect to login
         setHasRedirected(true);
         login();
