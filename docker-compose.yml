@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: hanuman97/tracking-hub-frontend:latest
+    image: 331005568745.dkr.ecr.us-east-1.amazonaws.com/delivery-tracking:frontend-TAG
     container_name: tracking-hub-frontend
     ports:
       - "80:80"
